@@ -44,7 +44,6 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         self.class_weight = class_weight
         self.random_state = random_state
         self.verbose = verbose
-        self.__max_kernel_size = max(self.kernel_sizes)
 
     def __default_preprocessor(self, string):
         string = re.sub(r"[^A-Za-z0-9(),!?\'\`]", " ", string)
@@ -101,6 +100,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
 
         torch.backends.cudnn.deterministic = self.random_state is not None
         torch.backends.cudnn.benchmark = self.random_state is None
+        self.__max_kernel_size = max(self.kernel_sizes)
 
         if self.verbose > 1:
             params = self.get_params().items()

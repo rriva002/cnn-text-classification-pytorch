@@ -171,20 +171,21 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         return self
 
     def __predict(self, X):
-        texts = []
-
         self.__model.eval()
 
-        for text in X:
-            assert isinstance(text, str)
+        X = self.__text_field.pad([self.__text_field.preprocess(x) for x in X])
+        X = [[self.__text_field.vocab.stoi[x] for x in text] for text in X]
+        X = torch.tensor(X)
+        preds, batch_start = [], 0
 
-            text = self.__text_field.preprocess(text)
-            text = [self.__text_field.vocab.stoi[x] for x in text]
-            texts.append(torch.tensor(text))
+        while batch_start < X.shape[0]:
+            batch_size = min(self.batch_size, X.shape[0] - batch_start)
+            x = X[batch_start:batch_start + batch_size].clone().detach()
+            x = x.cuda() if self.cuda and torch.cuda.is_available() else x
+            preds += self.__model(x).tolist()
+            batch_start += batch_size
 
-        x = torch.stack(texts, 0)
-        x = x.cuda() if self.cuda and torch.cuda.is_available() else x
-        return self.__model(x)
+        return torch.tensor(preds)
 
     def predict(self, X):
         y_pred = torch.argmax(self.__predict(X), 1)

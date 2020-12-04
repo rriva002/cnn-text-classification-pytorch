@@ -94,9 +94,17 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         preds = [self.__label_field.vocab.itos[pred + 1] for pred in preds]
         return self.scoring(_Eval(preds), None, targets)
 
+    def __finalize_training(self, start):
+        if self.verbose > 0:
+            self.__print_elapsed_time(time() - start)
+
+        self.classes_ = self.__label_field.vocab.itos[1:]
+        return self
+
     def fit(self, X, y, sample_weight=None):
         if self.random_state is not None:
             torch.manual_seed(self.random_state)
+            torch.cuda.manual_seed(self.random_state)
 
         torch.backends.cudnn.deterministic = self.random_state is not None
         torch.backends.cudnn.benchmark = self.random_state is None
@@ -119,19 +127,18 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
                                 vectors=self.__text_field.vocab.vectors)
 
         if self.cuda and torch.cuda.is_available():
-            torch.cuda.set_device(self.device)
+            torch.cuda.device(self.device)
             self.__model.cuda()
 
         optimizer = torch.optim.Adam(self.__model.parameters(), lr=self.lr,
                                      weight_decay=self.max_norm)
         steps, best_acc, last_step = 0, 0, 0
-        active = True
-        filename = "./{}.model".format(time())
-
-        self.__model.train()
+        fn = "./{}.model".format(time())
 
         for epoch in range(self.epochs):
             for batch in train_iter:
+                self.__model.train()
+
                 feature, target = batch.text.t_(), batch.label.sub_(1)
 
                 if self.cuda and torch.cuda.is_available():
@@ -151,41 +158,35 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
                         last_step = steps
 
                         if self.save_best:
-                            torch.save(self.__model.state_dict(), filename)
+                            torch.save(self.__model.state_dict(), fn)
                     elif steps - last_step >= self.early_stop:
-                        active = False
-                        break
+                        return self.__finalize_training(start)
 
-            if not active:
-                break
+        if self.save_best and exists(fn):
+            if self.__eval(dev_iter) < best_acc:
+                self.__model.load_state_dict(torch.load(fn))
 
-        if self.save_best and exists(filename):
-            self.__model.load_state_dict(torch.load(filename))
-            remove(filename)
+            remove(fn)
 
-        self.classes_ = self.__label_field.vocab.itos[1:]
-
-        if self.verbose > 0:
-            self.__print_elapsed_time(time() - start)
-
-        return self
+        return self.__finalize_training(start)
 
     def __predict(self, X):
         self.__model.eval()
 
-        X = self.__text_field.pad([self.__text_field.preprocess(x) for x in X])
-        X = [[self.__text_field.vocab.stoi[x] for x in text] for text in X]
-        X = torch.tensor(X)
+        cuda = self.cuda and torch.cuda.is_available()
         preds, batch_start = [], 0
 
-        while batch_start < X.shape[0]:
-            batch_size = min(self.batch_size, X.shape[0] - batch_start)
-            x = X[batch_start:batch_start + batch_size].clone().detach()
-            x = x.cuda() if self.cuda and torch.cuda.is_available() else x
-            preds += self.__model(x).tolist()
-            batch_start += batch_size
+        while batch_start < len(X):
+            batch_end = min(batch_start + self.batch_size, len(X))
+            X_b = X[batch_start:batch_end]
+            X_b = [self.__text_field.preprocess(t) for t in X_b]
+            X_b = self.__text_field.pad(X_b)
+            X_b = [[self.__text_field.vocab.stoi[x] for x in t] for t in X_b]
+            X_b = torch.tensor(X_b).cuda() if cuda else torch.tensor(X_b)
+            preds.append(self.__model(X_b).clone().detach().cpu())
+            batch_start = batch_end
 
-        return torch.tensor(preds)
+        return torch.cat(preds)
 
     def predict(self, X):
         y_pred = torch.argmax(self.__predict(X), 1)

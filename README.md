@@ -56,7 +56,7 @@ Fork of Shawn Ng's [CNNs for Sentence Classification in PyTorch](https://github.
   If true, fix the embedding.
 
 **device : int, optional (default=-1)**
-  Device to use for iterating data; -1 for CPU (see torch.cuda.set_device()).
+  Device to use for CUDA; -1 to use the currently selected device (see torch.cuda.device()).
 
 **cuda : boolean, optional (default=True)**
   If true, use the GPU if available.
@@ -71,7 +71,7 @@ Fork of Shawn Ng's [CNNs for Sentence Classification in PyTorch](https://github.
   Positive class label for roc_auc scoring. Ignored if using a different scoring method.
 
 **vectors : string, optional (default=None)**
-  Which pretrained TorchText vectors to use (see [torchtext.vocab.pretrained_aliases](https://torchtext.readthedocs.io/en/latest/vocab.html#pretrained-aliases) for options).
+  Which pretrained TorchText vectors to use (see [torchtext.vocab.pretrained_aliases](https://torchtext.readthedocs.io/en/latest/vocab.html#pretrained-aliases) for options). If not None, setting static=True is strongly recommended.
 
 **split_ratio : float, optional (default=0.9)**
   Ratio of training data used for training. The remainder will be used for validation.

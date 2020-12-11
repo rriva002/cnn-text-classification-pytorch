@@ -94,9 +94,12 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         preds = [self.__label_field.vocab.itos[pred + 1] for pred in preds]
         return self.scoring(_Eval(preds), None, targets)
 
-    def __finalize_training(self, start):
+    def __finalize_training(self, start, filename):
         if self.verbose > 0:
             self.__print_elapsed_time(time() - start)
+
+        if self.save_best and exists(filename):
+            remove(filename)
 
         self.classes_ = self.__label_field.vocab.itos[1:]
         return self
@@ -133,7 +136,7 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
         optimizer = torch.optim.Adam(self.__model.parameters(), lr=self.lr,
                                      weight_decay=self.max_norm)
         steps, best_acc, last_step = 0, 0, 0
-        fn = "./{}.model".format(time())
+        filename = "./{}.model".format(time())
 
         for epoch in range(self.epochs):
             for batch in train_iter:
@@ -158,17 +161,15 @@ class CNNClassifier(BaseEstimator, ClassifierMixin):
                         last_step = steps
 
                         if self.save_best:
-                            torch.save(self.__model.state_dict(), fn)
+                            torch.save(self.__model.state_dict(), filename)
                     elif steps - last_step >= self.early_stop:
-                        return self.__finalize_training(start)
+                        return self.__finalize_training(start, filename)
 
-        if self.save_best and exists(fn):
+        if self.save_best and exists(filename):
             if self.__eval(dev_iter) < best_acc:
-                self.__model.load_state_dict(torch.load(fn))
+                self.__model.load_state_dict(torch.load(filename))
 
-            remove(fn)
-
-        return self.__finalize_training(start)
+        return self.__finalize_training(start, filename)
 
     def __predict(self, X):
         self.__model.eval()
